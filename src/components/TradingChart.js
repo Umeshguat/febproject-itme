@@ -51,6 +51,34 @@ const MARKETS = {
   ]
 };
 
+// Calculate Simple Moving Average (SMA)
+const calculateSMA = (data, period) => {
+  if (!data || data.length < period) return data;
+
+  return data.map((item, index) => {
+    if (index < period - 1) {
+      return { ...item, [`sma${period}`]: null };
+    }
+
+    const sum = data
+      .slice(index - period + 1, index + 1)
+      .reduce((acc, d) => acc + d.close, 0);
+
+    return { ...item, [`sma${period}`]: sum / period };
+  });
+};
+
+// Add multiple SMAs to data
+const addSMAToData = (data) => {
+  if (!data || data.length === 0) return data;
+
+  let result = [...data];
+  result = calculateSMA(result, 22);
+  result = calculateSMA(result, 33);
+
+  return result;
+};
+
 // Fibonacci calculation utilities
 const calculateFibonacciLevels = (data) => {
   if (!data || data.length === 0) return null;
@@ -239,13 +267,14 @@ const generateSampleData = (basePrice, variation) => {
 const TradingChart = ({ onFibonacciUpdate }) => {
   const [marketType, setMarketType] = useState('crypto');
   const [selectedSymbol, setSelectedSymbol] = useState(MARKETS.crypto[0]);
-  const [data, setData] = useState(generateSampleData(MARKETS.crypto[0].basePrice, MARKETS.crypto[0].variation));
+  const [data, setData] = useState(addSMAToData(generateSampleData(MARKETS.crypto[0].basePrice, MARKETS.crypto[0].variation)));
   const [timeframe, setTimeframe] = useState('1D');
   const [chartType, setChartType] = useState('candlestick');
   const [liveUpdate, setLiveUpdate] = useState(true);
   const [fibonacciLevels, setFibonacciLevels] = useState(null);
   const [fibonacciSignal, setFibonacciSignal] = useState(null);
   const [showFibonacci, setShowFibonacci] = useState(true);
+  const [showSMA, setShowSMA] = useState(true);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [useRealData, setUseRealData] = useState(true);
   const [apiError, setApiError] = useState(null);
@@ -261,12 +290,13 @@ const TradingChart = ({ onFibonacciUpdate }) => {
       const liveData = await fetchMarketData(type, symbol.symbol);
 
       if (liveData && liveData.length > 0) {
-        setData(liveData);
-        updateFibonacciAnalysis(liveData);
+        const dataWithSMA = addSMAToData(liveData);
+        setData(dataWithSMA);
+        updateFibonacciAnalysis(dataWithSMA);
         setUseRealData(true);
       } else {
         // Fallback to simulated data
-        const fallbackData = generateSampleData(symbol.basePrice, symbol.variation);
+        const fallbackData = addSMAToData(generateSampleData(symbol.basePrice, symbol.variation));
         setData(fallbackData);
         updateFibonacciAnalysis(fallbackData);
         setUseRealData(false);
@@ -275,7 +305,7 @@ const TradingChart = ({ onFibonacciUpdate }) => {
     } catch (error) {
       console.error('Error fetching live data:', error);
       // Fallback to simulated data
-      const fallbackData = generateSampleData(symbol.basePrice, symbol.variation);
+      const fallbackData = addSMAToData(generateSampleData(symbol.basePrice, symbol.variation));
       setData(fallbackData);
       updateFibonacciAnalysis(fallbackData);
       setUseRealData(false);
@@ -293,7 +323,7 @@ const TradingChart = ({ onFibonacciUpdate }) => {
     if (useRealData) {
       fetchLiveData(type, newSymbol);
     } else {
-      const newData = generateSampleData(newSymbol.basePrice, newSymbol.variation);
+      const newData = addSMAToData(generateSampleData(newSymbol.basePrice, newSymbol.variation));
       setData(newData);
       updateFibonacciAnalysis(newData);
     }
@@ -305,7 +335,7 @@ const TradingChart = ({ onFibonacciUpdate }) => {
     if (useRealData) {
       fetchLiveData(marketType, symbol);
     } else {
-      const newData = generateSampleData(symbol.basePrice, symbol.variation);
+      const newData = addSMAToData(generateSampleData(symbol.basePrice, symbol.variation));
       setData(newData);
       updateFibonacciAnalysis(newData);
     }
@@ -398,9 +428,13 @@ const TradingChart = ({ onFibonacciUpdate }) => {
 
     const { open, high, low, close } = candle;
     const isGreen = close >= open;
-    const color = isGreen ? '#26a69a' : '#f23645';
-    const ratio = height / (Math.max(...data.map(d => d.high)) - Math.min(...data.map(d => d.low)));
 
+    // TradingView-style colors
+    const bullColor = '#089981'; // TradingView green
+    const bearColor = '#F23645'; // TradingView red
+    const color = isGreen ? bullColor : bearColor;
+
+    const ratio = height / (Math.max(...data.map(d => d.high)) - Math.min(...data.map(d => d.low)));
     const minPrice = Math.min(...data.map(d => d.low));
 
     const yHigh = y + height - (high - minPrice) * ratio;
@@ -408,43 +442,44 @@ const TradingChart = ({ onFibonacciUpdate }) => {
     const yOpen = y + height - (open - minPrice) * ratio;
     const yClose = y + height - (close - minPrice) * ratio;
 
-    const candleWidth = Math.max(width * 0.7, 1);
+    // TradingView style: wider candles with small gaps
+    const candleWidth = Math.max(width * 0.8, 2);
     const candleX = x + (width - candleWidth) / 2;
+    const wickWidth = Math.max(1, candleWidth * 0.15);
+
+    const bodyTop = isGreen ? yClose : yOpen;
+    const bodyHeight = Math.max(Math.abs(yOpen - yClose), 1);
 
     return (
       <g key={`candle-${index}`}>
-        {/* Wick (high-low line) */}
-        <line
-          x1={x + width / 2}
-          y1={yHigh}
-          x2={x + width / 2}
-          y2={yLow}
-          stroke={color}
-          strokeWidth={1}
+        {/* Upper wick */}
+        <rect
+          x={x + width / 2 - wickWidth / 2}
+          y={yHigh}
+          width={wickWidth}
+          height={Math.abs(bodyTop - yHigh)}
+          fill={color}
         />
 
-        {/* Candle body */}
-        {isGreen ? (
-          <rect
-            x={candleX}
-            y={yClose}
-            width={candleWidth}
-            height={Math.max(Math.abs(yOpen - yClose), 1)}
-            fill={color}
-            stroke={color}
-            strokeWidth={1}
-          />
-        ) : (
-          <rect
-            x={candleX}
-            y={yOpen}
-            width={candleWidth}
-            height={Math.max(Math.abs(yClose - yOpen), 1)}
-            fill={color}
-            stroke={color}
-            strokeWidth={1}
-          />
-        )}
+        {/* Lower wick */}
+        <rect
+          x={x + width / 2 - wickWidth / 2}
+          y={bodyTop + bodyHeight}
+          width={wickWidth}
+          height={Math.abs(yLow - (bodyTop + bodyHeight))}
+          fill={color}
+        />
+
+        {/* Candle body - TradingView style */}
+        <rect
+          x={candleX}
+          y={bodyTop}
+          width={candleWidth}
+          height={bodyHeight}
+          fill={color}
+          rx={1}
+          ry={1}
+        />
       </g>
     );
   };
@@ -576,6 +611,23 @@ const TradingChart = ({ onFibonacciUpdate }) => {
           </button>
 
           <button
+            onClick={() => setShowSMA(!showSMA)}
+            style={{
+              padding: '6px 12px',
+              backgroundColor: showSMA ? '#FF6D00' : 'transparent',
+              color: showSMA ? '#fff' : '#787b86',
+              border: showSMA ? '1px solid #FF6D00' : '1px solid #434651',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '11px',
+              fontWeight: '500',
+              transition: 'all 0.2s'
+            }}
+          >
+            SMA 22/33
+          </button>
+
+          <button
             onClick={() => {
               setUseRealData(!useRealData);
               if (!useRealData) {
@@ -635,6 +687,16 @@ const TradingChart = ({ onFibonacciUpdate }) => {
           <h2 style={{ margin: 0, color: '#d1d4dc', fontSize: '18px', fontWeight: '600' }}>
             {selectedSymbol.symbol}
           </h2>
+          {showSMA && data.length > 0 && (
+            <div style={{ display: 'flex', gap: '12px', fontSize: '11px' }}>
+              <span style={{ color: '#2962FF' }}>
+                SMA22: {data[data.length - 1]?.sma22?.toFixed(2) || '—'}
+              </span>
+              <span style={{ color: '#FF6D00' }}>
+                SMA33: {data[data.length - 1]?.sma33?.toFixed(2) || '—'}
+              </span>
+            </div>
+          )}
           {apiError && (
             <div style={{
               fontSize: '10px',
@@ -758,6 +820,34 @@ const TradingChart = ({ onFibonacciUpdate }) => {
                 <Line yAxisId="price" type="monotone" dataKey={() => fibonacciLevels.level786} stroke="#ff9ff3" strokeWidth={1.5} strokeDasharray="3 3" dot={false} name="78.6%" />
                 <Line yAxisId="price" type="monotone" dataKey={() => fibonacciLevels.level100} stroke="#26a69a" strokeWidth={1} strokeDasharray="5 5" dot={false} name="0% (Low)" />
               </>
+            )}
+
+            {/* 22-period SMA - Blue */}
+            {showSMA && (
+              <Line
+                yAxisId="price"
+                type="monotone"
+                dataKey="sma22"
+                stroke="#2962FF"
+                strokeWidth={2}
+                dot={false}
+                name="SMA 22"
+                connectNulls={false}
+              />
+            )}
+
+            {/* 33-period SMA - Orange */}
+            {showSMA && (
+              <Line
+                yAxisId="price"
+                type="monotone"
+                dataKey="sma33"
+                stroke="#FF6D00"
+                strokeWidth={2}
+                dot={false}
+                name="SMA 33"
+                connectNulls={false}
+              />
             )}
 
             <Bar
