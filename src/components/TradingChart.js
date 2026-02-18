@@ -80,11 +80,12 @@ const addSMAToData = (data) => {
 };
 
 // Fibonacci calculation utilities
-const calculateFibonacciLevels = (data) => {
+const calculateFibonacciLevels = (data, lookback = 14) => {
   if (!data || data.length === 0) return null;
 
-  const high = Math.max(...data.map(d => d.high));
-  const low = Math.min(...data.map(d => d.low));
+  const recentData = data.slice(-Math.min(lookback, data.length));
+  const high = Math.max(...recentData.map(d => d.high));
+  const low = Math.min(...recentData.map(d => d.low));
   const diff = high - low;
 
   return {
@@ -98,141 +99,185 @@ const calculateFibonacciLevels = (data) => {
   };
 };
 
-const calculateFibonacciSignals = (currentPrice, fibLevels) => {
-  if (!fibLevels) return { signal: 'NEUTRAL', strength: 0, entry: null, exit: null };
+const calculateFibonacciSignals = (currentPrice, fibLevels, recentData) => {
+  if (!fibLevels) return { signal: 'NEUTRAL', strength: 50, entry: null, exit: null, reason: 'No data available' };
 
-  const tolerance = 0.015; // 1.5% tolerance for better detection
   const range = fibLevels.level0 - fibLevels.level100;
+  if (range <= 0) return { signal: 'NEUTRAL', strength: 50, entry: currentPrice, exit: null, reason: 'No price range' };
 
-  // Calculate distance to each level as percentage of total range
-  const distToLevel0 = Math.abs(currentPrice - fibLevels.level0) / range;
-  const distToLevel236 = Math.abs(currentPrice - fibLevels.level236) / range;
-  const distToLevel382 = Math.abs(currentPrice - fibLevels.level382) / range;
-  const distToLevel500 = Math.abs(currentPrice - fibLevels.level500) / range;
-  const distToLevel618 = Math.abs(currentPrice - fibLevels.level618) / range;
-  const distToLevel786 = Math.abs(currentPrice - fibLevels.level786) / range;
-  const distToLevel100 = Math.abs(currentPrice - fibLevels.level100) / range;
+  // 1. Candle direction: close vs open (changes every tick since close updates but open stays)
+  let candleScore = 0;
+  if (recentData && recentData.length > 0) {
+    const lastCandle = recentData[recentData.length - 1];
+    const candleChange = ((lastCandle.close - lastCandle.open) / lastCandle.open) * 100;
+    if (candleChange > 0.3) candleScore = 2;
+    else if (candleChange > 0) candleScore = 1;
+    else if (candleChange < -0.3) candleScore = -2;
+    else if (candleChange < 0) candleScore = -1;
+  }
 
-  // Find closest level
-  const distances = [
-    { level: '0%', dist: distToLevel0, price: fibLevels.level0 },
-    { level: '23.6%', dist: distToLevel236, price: fibLevels.level236 },
-    { level: '38.2%', dist: distToLevel382, price: fibLevels.level382 },
-    { level: '50%', dist: distToLevel500, price: fibLevels.level500 },
-    { level: '61.8%', dist: distToLevel618, price: fibLevels.level618 },
-    { level: '78.6%', dist: distToLevel786, price: fibLevels.level786 },
-    { level: '100%', dist: distToLevel100, price: fibLevels.level100 }
-  ];
+  // 2. Cross-candle direction: current price vs previous candle close
+  let crossScore = 0;
+  if (recentData && recentData.length >= 2) {
+    const prevCandle = recentData[recentData.length - 2];
+    const crossChange = ((currentPrice - prevCandle.close) / prevCandle.close) * 100;
+    if (crossChange > 0.2) crossScore = 1;
+    else if (crossChange < -0.2) crossScore = -1;
+  }
 
-  const closest = distances.reduce((min, curr) => curr.dist < min.dist ? curr : min);
+  // 3. SMA trend (SMA22 vs SMA33 crossover)
+  let smaScore = 0;
+  if (recentData && recentData.length > 0) {
+    const lastCandle = recentData[recentData.length - 1];
+    if (lastCandle.sma22 != null && lastCandle.sma33 != null) {
+      if (lastCandle.sma22 > lastCandle.sma33) smaScore = 1;
+      else if (lastCandle.sma22 < lastCandle.sma33) smaScore = -1;
+    }
+  }
 
-  // Price near 78.6% (deep support)
-  if (distToLevel786 < tolerance) {
-    return {
-      signal: 'STRONG BUY',
-      strength: 95,
-      entry: fibLevels.level786,
-      exit: fibLevels.level500,
-      stopLoss: fibLevels.level100,
-      reason: 'Price at 78.6% retracement (Deep pullback - Strong Support)'
-    };
+  // 4. Price vs SMA22 (above = bullish, below = bearish) - changes every tick
+  let priceVsSmaScore = 0;
+  if (recentData && recentData.length > 0) {
+    const lastCandle = recentData[recentData.length - 1];
+    if (lastCandle.sma22 != null) {
+      if (currentPrice > lastCandle.sma22) priceVsSmaScore = 1;
+      else priceVsSmaScore = -1;
+    }
   }
-  // Price near 61.8% (golden ratio)
-  else if (distToLevel618 < tolerance) {
-    return {
-      signal: 'BUY',
-      strength: 88,
-      entry: fibLevels.level618,
-      exit: fibLevels.level382,
-      stopLoss: fibLevels.level786,
-      reason: 'Price at 61.8% retracement (Golden Ratio - Key Support)'
-    };
+
+  // 5. Fibonacci zone classification
+  let zoneScore = 0;
+  let zoneName = '';
+
+  if (currentPrice >= fibLevels.level0) {
+    zoneScore = -3; zoneName = 'Above resistance';
+  } else if (currentPrice >= fibLevels.level236) {
+    zoneScore = -2; zoneName = 'Resistance zone';
+  } else if (currentPrice >= fibLevels.level382) {
+    zoneScore = -1; zoneName = 'Upper zone';
+  } else if (currentPrice >= fibLevels.level500) {
+    zoneScore = 0; zoneName = 'Mid zone';
+  } else if (currentPrice >= fibLevels.level618) {
+    zoneScore = 0; zoneName = 'Mid zone';
+  } else if (currentPrice >= fibLevels.level786) {
+    zoneScore = 1; zoneName = 'Support zone';
+  } else if (currentPrice >= fibLevels.level100) {
+    zoneScore = 2; zoneName = 'Strong support';
+  } else {
+    zoneScore = 3; zoneName = 'Below support';
   }
-  // Price near 50% (midpoint)
-  else if (distToLevel500 < tolerance) {
-    return {
-      signal: 'BUY',
-      strength: 75,
-      entry: fibLevels.level500,
-      exit: fibLevels.level236,
-      stopLoss: fibLevels.level618,
-      reason: 'Price at 50% retracement (Midpoint - Balanced Level)'
-    };
+
+  // Combined score: range -8 to +8
+  const totalScore = zoneScore + candleScore + crossScore + smaScore + priceVsSmaScore;
+  const direction = candleScore > 0 ? 'Rising' : candleScore < 0 ? 'Falling' : 'Flat';
+
+  let signal, strength, entry, exit, stopLoss, reason;
+
+  if (totalScore >= 5) {
+    signal = 'STRONG BUY'; strength = 92 + Math.min(totalScore - 5, 3);
+    entry = currentPrice; exit = fibLevels.level236; stopLoss = fibLevels.level100;
+    reason = `${zoneName} — ${direction} — All indicators align bullish`;
+  } else if (totalScore >= 3) {
+    signal = 'BUY'; strength = 75 + totalScore;
+    entry = currentPrice; exit = fibLevels.level382; stopLoss = fibLevels.level786;
+    reason = `${zoneName} — ${direction} — Bullish momentum detected`;
+  } else if (totalScore >= 1) {
+    signal = 'BUY'; strength = 58 + totalScore * 3;
+    entry = currentPrice; exit = fibLevels.level500; stopLoss = fibLevels.level786;
+    reason = `${zoneName} — ${direction} — Slight bullish bias`;
+  } else if (totalScore === 0) {
+    signal = 'HOLD'; strength = 50;
+    entry = currentPrice; exit = null; stopLoss = null;
+    reason = `${zoneName} — ${direction} — Neutral, awaiting direction`;
+  } else if (totalScore >= -2) {
+    signal = 'SELL'; strength = 58 + Math.abs(totalScore) * 3;
+    entry = currentPrice; exit = fibLevels.level618; stopLoss = fibLevels.level236;
+    reason = `${zoneName} — ${direction} — Slight bearish bias`;
+  } else if (totalScore <= -5) {
+    signal = 'STRONG SELL'; strength = 92 + Math.min(Math.abs(totalScore) - 5, 3);
+    entry = currentPrice; exit = fibLevels.level786; stopLoss = fibLevels.level0;
+    reason = `${zoneName} — ${direction} — All indicators align bearish`;
+  } else {
+    signal = 'SELL'; strength = 75 + Math.abs(totalScore);
+    entry = currentPrice; exit = fibLevels.level500; stopLoss = fibLevels.level0;
+    reason = `${zoneName} — ${direction} — Bearish momentum detected`;
   }
-  // Price near 38.2%
-  else if (distToLevel382 < tolerance) {
-    return {
-      signal: 'HOLD',
-      strength: 65,
-      entry: fibLevels.level382,
-      exit: fibLevels.level236,
-      stopLoss: fibLevels.level500,
-      reason: 'Price at 38.2% retracement (Moderate Resistance)'
-    };
+
+  return { signal, strength, entry, exit, stopLoss, reason };
+};
+
+// Technical indicator calculations
+const calculateRSI = (data, period = 14) => {
+  if (!data || data.length < period + 1) return null;
+  const recent = data.slice(-(period + 1));
+  let gains = 0, losses = 0;
+  for (let i = 1; i < recent.length; i++) {
+    const change = recent[i].close - recent[i - 1].close;
+    if (change > 0) gains += change;
+    else losses += Math.abs(change);
   }
-  // Price near 23.6% (resistance)
-  else if (distToLevel236 < tolerance) {
-    return {
-      signal: 'SELL',
-      strength: 82,
-      entry: fibLevels.level236,
-      exit: fibLevels.level500,
-      stopLoss: fibLevels.level0,
-      reason: 'Price at 23.6% retracement (Near Resistance)'
-    };
+  const avgGain = gains / period;
+  const avgLoss = losses / period;
+  if (avgLoss === 0) return 100;
+  return 100 - (100 / (1 + avgGain / avgLoss));
+};
+
+const calculateEMA = (arr, period) => {
+  const k = 2 / (period + 1);
+  let result = arr[0];
+  for (let i = 1; i < arr.length; i++) {
+    result = arr[i] * k + result * (1 - k);
   }
-  // Price above 23.6% (overbought)
-  else if (currentPrice > fibLevels.level236) {
-    return {
-      signal: 'SELL',
-      strength: 78,
-      entry: currentPrice,
-      exit: fibLevels.level382,
-      stopLoss: fibLevels.level0,
-      reason: 'Price above 23.6% level (Overbought Zone)'
-    };
-  }
-  // Price below 78.6% (oversold)
-  else if (currentPrice < fibLevels.level786) {
-    return {
-      signal: 'BUY',
-      strength: 72,
-      entry: currentPrice,
-      exit: fibLevels.level618,
-      stopLoss: fibLevels.level100,
-      reason: 'Price below 78.6% level (Oversold Zone)'
-    };
-  }
-  // Price in middle range (50-61.8%)
-  else if (currentPrice >= fibLevels.level618 && currentPrice <= fibLevels.level500) {
-    return {
-      signal: 'HOLD',
-      strength: 60,
-      entry: currentPrice,
-      exit: fibLevels.level382,
-      stopLoss: fibLevels.level786,
-      reason: `Price in neutral zone (Near ${closest.level} level)`
-    };
-  }
-  // Price in upper-middle range (38.2-50%)
-  else if (currentPrice >= fibLevels.level500 && currentPrice <= fibLevels.level382) {
-    return {
-      signal: 'HOLD',
-      strength: 58,
-      entry: currentPrice,
-      exit: fibLevels.level236,
-      stopLoss: fibLevels.level618,
-      reason: `Price approaching resistance (Near ${closest.level} level)`
-    };
-  }
+  return result;
+};
+
+const calculateMACD = (data) => {
+  if (!data || data.length < 26) return null;
+  const closes = data.map(d => d.close);
+  const ema12 = calculateEMA(closes.slice(-12), 12);
+  const ema26 = calculateEMA(closes.slice(-26), 26);
+  return ema12 - ema26;
+};
+
+const calculateStochastic = (data, period = 14) => {
+  if (!data || data.length < period) return null;
+  const recent = data.slice(-period);
+  const high = Math.max(...recent.map(d => d.high));
+  const low = Math.min(...recent.map(d => d.low));
+  const close = recent[recent.length - 1].close;
+  if (high === low) return 50;
+  return ((close - low) / (high - low)) * 100;
+};
+
+const calculateBollingerPosition = (data, period = 20) => {
+  if (!data || data.length < period) return null;
+  const recent = data.slice(-period);
+  const closes = recent.map(d => d.close);
+  const mean = closes.reduce((a, b) => a + b, 0) / period;
+  const stdDev = Math.sqrt(closes.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / period);
+  const current = closes[closes.length - 1];
+  if (current >= mean + 2 * stdDev) return 'Upper';
+  if (current <= mean - 2 * stdDev) return 'Lower';
+  if (current >= mean) return 'Mid-Upper';
+  return 'Mid-Lower';
+};
+
+const computeIndicators = (chartData) => {
+  if (!chartData || chartData.length === 0) return null;
+  const rsi = calculateRSI(chartData);
+  const macd = calculateMACD(chartData);
+  const stochastic = calculateStochastic(chartData);
+  const bollingerPos = calculateBollingerPosition(chartData);
+  const lastCandle = chartData[chartData.length - 1];
 
   return {
-    signal: 'NEUTRAL',
-    strength: 50,
-    entry: currentPrice,
-    exit: null,
-    stopLoss: null,
-    reason: `Price at ${closest.level} - Monitor for breakout`
+    rsi: rsi != null ? parseFloat(rsi.toFixed(1)) : null,
+    macd: macd != null ? parseFloat(macd.toFixed(2)) : null,
+    stochastic: stochastic != null ? parseFloat(stochastic.toFixed(1)) : null,
+    bollingerPosition: bollingerPos,
+    sma22: lastCandle?.sma22 ? parseFloat(lastCandle.sma22.toFixed(2)) : null,
+    sma33: lastCandle?.sma33 ? parseFloat(lastCandle.sma33.toFixed(2)) : null,
+    currentPrice: lastCandle?.close || null,
   };
 };
 
@@ -278,8 +323,10 @@ const TradingChart = ({ onFibonacciUpdate }) => {
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [useRealData, setUseRealData] = useState(true);
   const [apiError, setApiError] = useState(null);
+  const [indicators, setIndicators] = useState(null);
   const intervalRef = useRef(null);
   const dataFetchRef = useRef(null);
+  const tickCountRef = useRef(0);
 
   // TradingView-style price formatter based on market type
   const formatPrice = (value) => {
@@ -358,9 +405,11 @@ const TradingChart = ({ onFibonacciUpdate }) => {
 
     if (levels && chartData.length > 0) {
       const currentPrice = chartData[chartData.length - 1].close;
-      const signal = calculateFibonacciSignals(currentPrice, levels);
+      const signal = calculateFibonacciSignals(currentPrice, levels, chartData);
       setFibonacciSignal(signal);
     }
+
+    setIndicators(computeIndicators(chartData));
   };
 
   // Load initial data
@@ -378,9 +427,9 @@ const TradingChart = ({ onFibonacciUpdate }) => {
   // Notify parent component when Fibonacci data changes
   useEffect(() => {
     if (onFibonacciUpdate && fibonacciLevels && fibonacciSignal) {
-      onFibonacciUpdate(fibonacciLevels, fibonacciSignal, marketType);
+      onFibonacciUpdate(fibonacciLevels, fibonacciSignal, marketType, indicators);
     }
-  }, [fibonacciLevels, fibonacciSignal, marketType]);
+  }, [fibonacciLevels, fibonacciSignal, marketType, indicators]);
 
   // Auto-refresh live data every 30 seconds
   useEffect(() => {
@@ -400,28 +449,54 @@ const TradingChart = ({ onFibonacciUpdate }) => {
   // Live data update simulation (only for simulated data)
   useEffect(() => {
     if (liveUpdate && !useRealData) {
+      tickCountRef.current = 0;
       intervalRef.current = setInterval(() => {
         setData(prevData => {
           const newData = [...prevData];
-          const lastCandle = newData[newData.length - 1];
+          tickCountRef.current += 1;
+          const decimals = selectedSymbol.basePrice < 10 ? 4 : 2;
 
-          // Update the last candle with new random values
-          const change = (Math.random() - 0.5) * (selectedSymbol.variation / 5);
-          const newClose = lastCandle.close + change;
-          const newHigh = Math.max(lastCandle.high, newClose);
-          const newLow = Math.min(lastCandle.low, newClose);
+          if (tickCountRef.current % 5 === 0) {
+            // Every ~10 seconds, add a new candle for more dynamic price action
+            const lastCandle = newData[newData.length - 1];
+            const change = (Math.random() - 0.5) * selectedSymbol.variation / 3;
+            const newOpen = lastCandle.close;
+            const newClose = newOpen + change;
+            const newHigh = Math.max(newOpen, newClose) + Math.random() * (selectedSymbol.variation / 6);
+            const newLow = Math.min(newOpen, newClose) - Math.random() * (selectedSymbol.variation / 6);
+            const candleNum = parseInt(lastCandle.date.replace('Day ', '')) + 1;
 
-          newData[newData.length - 1] = {
-            ...lastCandle,
-            close: parseFloat(newClose.toFixed(selectedSymbol.basePrice < 10 ? 4 : 2)),
-            high: parseFloat(newHigh.toFixed(selectedSymbol.basePrice < 10 ? 4 : 2)),
-            low: parseFloat(newLow.toFixed(selectedSymbol.basePrice < 10 ? 4 : 2)),
-            volume: lastCandle.volume + Math.floor(Math.random() * 10000),
-          };
+            newData.push({
+              date: `Day ${candleNum}`,
+              open: parseFloat(newOpen.toFixed(decimals)),
+              high: parseFloat(newHigh.toFixed(decimals)),
+              low: parseFloat(newLow.toFixed(decimals)),
+              close: parseFloat(newClose.toFixed(decimals)),
+              volume: Math.floor(Math.random() * 1000000),
+              candleColor: newClose >= newOpen ? '#26a69a' : '#ef5350',
+            });
 
-          return newData;
+            if (newData.length > 30) newData.shift();
+          } else {
+            // Update the last candle with new random values
+            const lastCandle = newData[newData.length - 1];
+            const change = (Math.random() - 0.5) * (selectedSymbol.variation / 5);
+            const newClose = lastCandle.close + change;
+            const newHigh = Math.max(lastCandle.high, newClose);
+            const newLow = Math.min(lastCandle.low, newClose);
+
+            newData[newData.length - 1] = {
+              ...lastCandle,
+              close: parseFloat(newClose.toFixed(decimals)),
+              high: parseFloat(newHigh.toFixed(decimals)),
+              low: parseFloat(newLow.toFixed(decimals)),
+              volume: lastCandle.volume + Math.floor(Math.random() * 10000),
+            };
+          }
+
+          return addSMAToData(newData);
         });
-      }, 2000); // Update every 2 seconds
+      }, 2000);
     }
 
     return () => {
@@ -973,9 +1048,9 @@ const TradingChart = ({ onFibonacciUpdate }) => {
           marginTop: '15px',
           padding: '15px',
           backgroundColor: fibonacciSignal.signal.includes('BUY') ? 'rgba(38, 166, 154, 0.1)' :
-                          fibonacciSignal.signal === 'SELL' ? 'rgba(242, 54, 69, 0.1)' : 'rgba(255, 193, 7, 0.1)',
+                          fibonacciSignal.signal.includes('SELL') ? 'rgba(242, 54, 69, 0.1)' : 'rgba(255, 193, 7, 0.1)',
           border: `2px solid ${fibonacciSignal.signal.includes('BUY') ? '#26a69a' :
-                               fibonacciSignal.signal === 'SELL' ? '#f23645' : '#ffc107'}`,
+                               fibonacciSignal.signal.includes('SELL') ? '#f23645' : '#ffc107'}`,
           borderRadius: '8px',
           display: 'flex',
           alignItems: 'center',
@@ -988,7 +1063,7 @@ const TradingChart = ({ onFibonacciUpdate }) => {
               fontSize: '24px',
               fontWeight: 'bold',
               color: fibonacciSignal.signal.includes('BUY') ? '#26a69a' :
-                     fibonacciSignal.signal === 'SELL' ? '#f23645' : '#ffc107'
+                     fibonacciSignal.signal.includes('SELL') ? '#f23645' : '#ffc107'
             }}>
               {fibonacciSignal.signal}
             </div>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const AnalysisPanel = ({ fibonacciLevels, fibonacciSignal, marketType = 'crypto' }) => {
+const AnalysisPanel = ({ fibonacciLevels, fibonacciSignal, marketType = 'crypto', indicators }) => {
   const [activeTab, setActiveTab] = useState('fibonacci');
 
   // Format price based on market type
@@ -14,14 +14,63 @@ const AnalysisPanel = ({ fibonacciLevels, fibonacciSignal, marketType = 'crypto'
     return value.toFixed(2);
   };
 
+  // Build dynamic indicators from real calculated data
+  const getSignalFromRSI = (rsi) => {
+    if (rsi == null) return { signal: '—', color: '#787b86' };
+    if (rsi > 70) return { signal: 'Sell', color: '#ef5350' };
+    if (rsi < 30) return { signal: 'Buy', color: '#26a69a' };
+    if (rsi > 60) return { signal: 'Neutral', color: '#ffc107' };
+    if (rsi < 40) return { signal: 'Neutral', color: '#ffc107' };
+    return { signal: 'Neutral', color: '#ffc107' };
+  };
+
+  const getSignalFromMACD = (macd) => {
+    if (macd == null) return { signal: '—', color: '#787b86' };
+    if (macd > 0) return { signal: 'Buy', color: '#26a69a' };
+    return { signal: 'Sell', color: '#ef5350' };
+  };
+
+  const getSignalFromStochastic = (stoch) => {
+    if (stoch == null) return { signal: '—', color: '#787b86' };
+    if (stoch > 80) return { signal: 'Sell', color: '#ef5350' };
+    if (stoch < 20) return { signal: 'Buy', color: '#26a69a' };
+    return { signal: 'Neutral', color: '#ffc107' };
+  };
+
+  const getSignalFromBollinger = (pos) => {
+    if (!pos) return { signal: '—', color: '#787b86' };
+    if (pos === 'Upper') return { signal: 'Sell', color: '#ef5350' };
+    if (pos === 'Lower') return { signal: 'Buy', color: '#26a69a' };
+    return { signal: 'Neutral', color: '#ffc107' };
+  };
+
+  const getSignalFromSMA = (sma22, sma33) => {
+    if (sma22 == null || sma33 == null) return { signal: '—', color: '#787b86' };
+    if (sma22 > sma33) return { signal: 'Buy', color: '#26a69a' };
+    if (sma22 < sma33) return { signal: 'Sell', color: '#ef5350' };
+    return { signal: 'Neutral', color: '#ffc107' };
+  };
+
+  const rsiSignal = getSignalFromRSI(indicators?.rsi);
+  const macdSignal = getSignalFromMACD(indicators?.macd);
+  const stochSignal = getSignalFromStochastic(indicators?.stochastic);
+  const bollingerSignal = getSignalFromBollinger(indicators?.bollingerPosition);
+  const smaSignal = getSignalFromSMA(indicators?.sma22, indicators?.sma33);
+
   const technicalIndicators = [
-    { name: 'RSI (14)', value: '62.4', signal: 'Neutral', color: '#ffc107' },
-    { name: 'MACD (12, 26)', value: '+125.3', signal: 'Buy', color: '#26a69a' },
-    { name: 'Moving Avg (50)', value: '49,850', signal: 'Buy', color: '#26a69a' },
-    { name: 'Moving Avg (200)', value: '48,200', signal: 'Buy', color: '#26a69a' },
-    { name: 'Bollinger Bands', value: 'Upper', signal: 'Sell', color: '#ef5350' },
-    { name: 'Stochastic', value: '45.2', signal: 'Neutral', color: '#ffc107' },
+    { name: 'RSI (14)', value: indicators?.rsi != null ? indicators.rsi.toFixed(1) : '—', signal: rsiSignal.signal, color: rsiSignal.color },
+    { name: 'MACD (12, 26)', value: indicators?.macd != null ? (indicators.macd > 0 ? '+' : '') + indicators.macd.toFixed(2) : '—', signal: macdSignal.signal, color: macdSignal.color },
+    { name: 'SMA (22/33)', value: indicators?.sma22 != null ? formatPrice(indicators.sma22) : '—', signal: smaSignal.signal, color: smaSignal.color },
+    { name: 'Bollinger Bands', value: indicators?.bollingerPosition || '—', signal: bollingerSignal.signal, color: bollingerSignal.color },
+    { name: 'Stochastic', value: indicators?.stochastic != null ? indicators.stochastic.toFixed(1) : '—', signal: stochSignal.signal, color: stochSignal.color },
   ];
+
+  // Calculate overall signal from indicators
+  const allSignals = [rsiSignal, macdSignal, stochSignal, bollingerSignal, smaSignal];
+  const buyCount = allSignals.filter(s => s.signal === 'Buy').length;
+  const sellCount = allSignals.filter(s => s.signal === 'Sell').length;
+  const overallSignal = buyCount > sellCount ? 'BULLISH' : sellCount > buyCount ? 'BEARISH' : 'NEUTRAL';
+  const overallColor = overallSignal === 'BULLISH' ? '#26a69a' : overallSignal === 'BEARISH' ? '#ef5350' : '#ffc107';
 
   const orderBook = [
     { price: 50250, amount: 0.5234, total: 26289 },
@@ -96,10 +145,10 @@ const AnalysisPanel = ({ fibonacciLevels, fibonacciSignal, marketType = 'crypto'
                 marginBottom: '25px',
                 padding: '20px',
                 backgroundColor: fibonacciSignal.signal.includes('BUY') ? 'rgba(38, 166, 154, 0.15)' :
-                                fibonacciSignal.signal === 'SELL' ? 'rgba(242, 54, 69, 0.15)' :
+                                fibonacciSignal.signal.includes('SELL') ? 'rgba(242, 54, 69, 0.15)' :
                                 fibonacciSignal.signal === 'HOLD' ? 'rgba(41, 98, 255, 0.15)' : 'rgba(255, 193, 7, 0.15)',
                 border: `2px solid ${fibonacciSignal.signal.includes('BUY') ? '#26a69a' :
-                                     fibonacciSignal.signal === 'SELL' ? '#f23645' :
+                                     fibonacciSignal.signal.includes('SELL') ? '#f23645' :
                                      fibonacciSignal.signal === 'HOLD' ? '#2962ff' : '#ffc107'}`,
                 borderRadius: '10px'
               }}>
@@ -109,7 +158,7 @@ const AnalysisPanel = ({ fibonacciLevels, fibonacciSignal, marketType = 'crypto'
                   fontWeight: 'bold',
                   marginBottom: '10px',
                   color: fibonacciSignal.signal.includes('BUY') ? '#26a69a' :
-                         fibonacciSignal.signal === 'SELL' ? '#f23645' :
+                         fibonacciSignal.signal.includes('SELL') ? '#f23645' :
                          fibonacciSignal.signal === 'HOLD' ? '#2962ff' : '#ffc107'
                 }}>
                   {fibonacciSignal.signal}
@@ -278,8 +327,8 @@ const AnalysisPanel = ({ fibonacciLevels, fibonacciSignal, marketType = 'crypto'
               <div style={{ fontSize: '12px', color: '#999', marginBottom: '5px' }}>
                 Overall Signal
               </div>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#26a69a' }}>
-                BULLISH
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: overallColor }}>
+                {overallSignal}
               </div>
             </div>
           </div>
