@@ -4,16 +4,16 @@ import TradingChart from './components/TradingChart';
 import AnalysisPanel from './components/AnalysisPanel';
 
 function App() {
-  const [fibonacciData, setFibonacciData] = useState({ levels: null, signal: null });
+  const [fibonacciData, setFibonacciData] = useState({ levels: null, signal: null, marketType: 'crypto' });
 
-  const handleFibonacciUpdate = useCallback((levels, signal) => {
+  const handleFibonacciUpdate = useCallback((levels, signal, marketType) => {
     setFibonacciData(prev => {
-      // Only update if data actually changed
       if (JSON.stringify(prev.levels) === JSON.stringify(levels) &&
-          JSON.stringify(prev.signal) === JSON.stringify(signal)) {
+          JSON.stringify(prev.signal) === JSON.stringify(signal) &&
+          prev.marketType === marketType) {
         return prev;
       }
-      return { levels, signal };
+      return { levels, signal, marketType };
     });
   }, []);
 
@@ -27,6 +27,7 @@ function App() {
           <AnalysisPanel
             fibonacciLevels={fibonacciData.levels}
             fibonacciSignal={fibonacciData.signal}
+            marketType={fibonacciData.marketType}
           />
         </div>
       </div>

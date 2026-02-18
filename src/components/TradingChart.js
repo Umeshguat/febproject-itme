@@ -281,6 +281,17 @@ const TradingChart = ({ onFibonacciUpdate }) => {
   const intervalRef = useRef(null);
   const dataFetchRef = useRef(null);
 
+  // TradingView-style price formatter based on market type
+  const formatPrice = (value) => {
+    if (marketType === 'forex') {
+      return value.toFixed(5); // e.g. 1.18600
+    }
+    if (value >= 1000) {
+      return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); // e.g. 18,351.55
+    }
+    return value.toFixed(2); // e.g. 320.50
+  };
+
   // Fetch live data from API
   const fetchLiveData = async (type, symbol) => {
     setIsLoadingData(true);
@@ -367,9 +378,9 @@ const TradingChart = ({ onFibonacciUpdate }) => {
   // Notify parent component when Fibonacci data changes
   useEffect(() => {
     if (onFibonacciUpdate && fibonacciLevels && fibonacciSignal) {
-      onFibonacciUpdate(fibonacciLevels, fibonacciSignal);
+      onFibonacciUpdate(fibonacciLevels, fibonacciSignal, marketType);
     }
-  }, [fibonacciLevels, fibonacciSignal]);
+  }, [fibonacciLevels, fibonacciSignal, marketType]);
 
   // Auto-refresh live data every 30 seconds
   useEffect(() => {
@@ -506,22 +517,22 @@ const TradingChart = ({ onFibonacciUpdate }) => {
           <div style={{ marginBottom: '8px', fontSize: '11px', color: '#787b86' }}>{data.date}</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '8px 12px' }}>
             <span style={{ color: '#787b86' }}>O</span>
-            <span style={{ textAlign: 'right', color: '#d1d4dc' }}>{priceSymbol}{data.open.toLocaleString()}</span>
+            <span style={{ textAlign: 'right', color: '#d1d4dc' }}>{priceSymbol}{formatPrice(data.open)}</span>
 
             <span style={{ color: '#787b86' }}>H</span>
-            <span style={{ textAlign: 'right', color: '#d1d4dc' }}>{priceSymbol}{data.high.toLocaleString()}</span>
+            <span style={{ textAlign: 'right', color: '#d1d4dc' }}>{priceSymbol}{formatPrice(data.high)}</span>
 
             <span style={{ color: '#787b86' }}>L</span>
-            <span style={{ textAlign: 'right', color: '#d1d4dc' }}>{priceSymbol}{data.low.toLocaleString()}</span>
+            <span style={{ textAlign: 'right', color: '#d1d4dc' }}>{priceSymbol}{formatPrice(data.low)}</span>
 
             <span style={{ color: '#787b86' }}>C</span>
             <span style={{ textAlign: 'right', color: isGreen ? '#26a69a' : '#f23645', fontWeight: 'bold' }}>
-              {priceSymbol}{data.close.toLocaleString()}
+              {priceSymbol}{formatPrice(data.close)}
             </span>
 
             <span style={{ color: '#787b86' }}>Change</span>
             <span style={{ textAlign: 'right', color: isGreen ? '#26a69a' : '#f23645' }}>
-              {change > 0 ? '+' : ''}{priceSymbol}{change.toFixed(2)} ({changePercent > 0 ? '+' : ''}{changePercent.toFixed(2)}%)
+              {change > 0 ? '+' : ''}{priceSymbol}{formatPrice(Math.abs(change))} ({changePercent > 0 ? '+' : ''}{changePercent.toFixed(2)}%)
             </span>
 
             <span style={{ color: '#787b86' }}>Vol</span>
@@ -690,10 +701,10 @@ const TradingChart = ({ onFibonacciUpdate }) => {
           {showSMA && data.length > 0 && (
             <div style={{ display: 'flex', gap: '12px', fontSize: '11px' }}>
               <span style={{ color: '#2962FF' }}>
-                SMA22: {data[data.length - 1]?.sma22?.toFixed(2) || '—'}
+                SMA22: {data[data.length - 1]?.sma22 ? formatPrice(data[data.length - 1].sma22) : '—'}
               </span>
               <span style={{ color: '#FF6D00' }}>
-                SMA33: {data[data.length - 1]?.sma33?.toFixed(2) || '—'}
+                SMA33: {data[data.length - 1]?.sma33 ? formatPrice(data[data.length - 1].sma33) : '—'}
               </span>
             </div>
           )}
@@ -797,7 +808,7 @@ const TradingChart = ({ onFibonacciUpdate }) => {
               axisLine={false}
               domain={['auto', 'auto']}
               width={90}
-              tickFormatter={(value) => value >= 1000 ? value.toLocaleString() : value < 10 ? value.toFixed(4) : value.toFixed(2)}
+              tickFormatter={formatPrice}
             />
             <YAxis
               yAxisId="volume"
@@ -887,7 +898,7 @@ const TradingChart = ({ onFibonacciUpdate }) => {
               tick={{ fill: '#999' }}
               domain={['auto', 'auto']}
               width={90}
-              tickFormatter={(value) => value >= 1000 ? value.toLocaleString() : value < 10 ? value.toFixed(4) : value.toFixed(2)}
+              tickFormatter={formatPrice}
             />
             <Tooltip content={<CustomTooltip />} />
             <Legend wrapperStyle={{ color: '#999' }} />
@@ -940,7 +951,7 @@ const TradingChart = ({ onFibonacciUpdate }) => {
               tick={{ fill: '#999' }}
               domain={['auto', 'auto']}
               width={90}
-              tickFormatter={(value) => value >= 1000 ? value.toLocaleString() : value < 10 ? value.toFixed(4) : value.toFixed(2)}
+              tickFormatter={formatPrice}
             />
             <Tooltip content={<CustomTooltip />} />
             <Legend wrapperStyle={{ color: '#999' }} />
@@ -990,7 +1001,7 @@ const TradingChart = ({ onFibonacciUpdate }) => {
               <div style={{ padding: '8px', backgroundColor: '#1e222d', borderRadius: '4px' }}>
                 <div style={{ fontSize: '10px', color: '#787b86', marginBottom: '2px' }}>Entry Point</div>
                 <div style={{ fontSize: '14px', color: '#2962ff', fontWeight: 'bold' }}>
-                  {marketType === 'forex' ? '' : marketType === 'indian_stock' ? '₹' : '$'}{fibonacciSignal.entry.toFixed(2)}
+                  {marketType === 'forex' ? '' : marketType === 'indian_stock' ? '₹' : '$'}{formatPrice(fibonacciSignal.entry)}
                 </div>
               </div>
             )}
@@ -998,7 +1009,7 @@ const TradingChart = ({ onFibonacciUpdate }) => {
               <div style={{ padding: '8px', backgroundColor: '#1e222d', borderRadius: '4px' }}>
                 <div style={{ fontSize: '10px', color: '#787b86', marginBottom: '2px' }}>Target</div>
                 <div style={{ fontSize: '14px', color: '#26a69a', fontWeight: 'bold' }}>
-                  {marketType === 'forex' ? '' : marketType === 'indian_stock' ? '₹' : '$'}{fibonacciSignal.exit.toFixed(2)}
+                  {marketType === 'forex' ? '' : marketType === 'indian_stock' ? '₹' : '$'}{formatPrice(fibonacciSignal.exit)}
                 </div>
               </div>
             )}
@@ -1006,7 +1017,7 @@ const TradingChart = ({ onFibonacciUpdate }) => {
               <div style={{ padding: '8px', backgroundColor: '#1e222d', borderRadius: '4px' }}>
                 <div style={{ fontSize: '10px', color: '#787b86', marginBottom: '2px' }}>Stop Loss</div>
                 <div style={{ fontSize: '14px', color: '#f23645', fontWeight: 'bold' }}>
-                  {marketType === 'forex' ? '' : marketType === 'indian_stock' ? '₹' : '$'}{fibonacciSignal.stopLoss.toFixed(2)}
+                  {marketType === 'forex' ? '' : marketType === 'indian_stock' ? '₹' : '$'}{formatPrice(fibonacciSignal.stopLoss)}
                 </div>
               </div>
             )}
@@ -1037,7 +1048,7 @@ const TradingChart = ({ onFibonacciUpdate }) => {
         }}>
           <div style={{ color: '#787b86', fontSize: '11px', marginBottom: '4px', fontWeight: '500' }}>Price</div>
           <div style={{ color: '#d1d4dc', fontSize: '16px', fontWeight: '600' }}>
-            {marketType === 'forex' ? '' : marketType === 'indian_stock' ? '₹' : '$'}{data[data.length - 1].close.toLocaleString()}
+            {marketType === 'forex' ? '' : marketType === 'indian_stock' ? '₹' : '$'}{formatPrice(data[data.length - 1].close)}
           </div>
         </div>
         <div style={{
@@ -1064,7 +1075,7 @@ const TradingChart = ({ onFibonacciUpdate }) => {
         }}>
           <div style={{ color: '#787b86', fontSize: '11px', marginBottom: '4px', fontWeight: '500' }}>24h High</div>
           <div style={{ color: '#d1d4dc', fontSize: '16px', fontWeight: '600' }}>
-            {marketType === 'forex' ? '' : marketType === 'indian_stock' ? '₹' : '$'}{Math.max(...data.map(d => d.high)).toLocaleString()}
+            {marketType === 'forex' ? '' : marketType === 'indian_stock' ? '₹' : '$'}{formatPrice(Math.max(...data.map(d => d.high)))}
           </div>
         </div>
         <div style={{
@@ -1075,7 +1086,7 @@ const TradingChart = ({ onFibonacciUpdate }) => {
         }}>
           <div style={{ color: '#787b86', fontSize: '11px', marginBottom: '4px', fontWeight: '500' }}>24h Low</div>
           <div style={{ color: '#d1d4dc', fontSize: '16px', fontWeight: '600' }}>
-            {marketType === 'forex' ? '' : marketType === 'indian_stock' ? '₹' : '$'}{Math.min(...data.map(d => d.low)).toLocaleString()}
+            {marketType === 'forex' ? '' : marketType === 'indian_stock' ? '₹' : '$'}{formatPrice(Math.min(...data.map(d => d.low)))}
           </div>
         </div>
       </div>

@@ -1,7 +1,18 @@
 import React, { useState } from 'react';
 
-const AnalysisPanel = ({ fibonacciLevels, fibonacciSignal }) => {
+const AnalysisPanel = ({ fibonacciLevels, fibonacciSignal, marketType = 'crypto' }) => {
   const [activeTab, setActiveTab] = useState('fibonacci');
+
+  // Format price based on market type
+  const formatPrice = (value) => {
+    if (marketType === 'forex') {
+      return value.toFixed(5);
+    }
+    if (value >= 1000) {
+      return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    return value.toFixed(2);
+  };
 
   const technicalIndicators = [
     { name: 'RSI (14)', value: '62.4', signal: 'Neutral', color: '#ffc107' },
@@ -180,7 +191,7 @@ const AnalysisPanel = ({ fibonacciLevels, fibonacciSignal }) => {
                         fontWeight: 'bold',
                         fontFamily: 'monospace'
                       }}>
-                        {level.value.toFixed(2)}
+                        {formatPrice(level.value)}
                       </div>
                     </div>
                   ))}

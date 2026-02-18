@@ -9,7 +9,8 @@
       "WebFetch(domain:indian-stock.vercel.app)",
       "WebFetch(domain:github.com)",
       "Bash(timeout:*)",
-      "Bash(npx eslint:*)"
+      "Bash(npx eslint:*)",
+      "Bash(npx react-scripts build)"
     ],
     "deny": [],
     "ask": []
