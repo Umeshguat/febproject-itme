@@ -772,7 +772,7 @@ const TradingChart = ({ onFibonacciUpdate }) => {
         {chartType === 'candlestick' ? (
           <ComposedChart
             data={data}
-            margin={{ top: 10, right: 10, left: 0, bottom: 5 }}
+            margin={{ top: 10, right: 10, left: 10, bottom: 5 }}
           >
             <defs>
               <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
@@ -796,7 +796,8 @@ const TradingChart = ({ onFibonacciUpdate }) => {
               tickLine={false}
               axisLine={false}
               domain={['auto', 'auto']}
-              width={60}
+              width={90}
+              tickFormatter={(value) => value >= 1000 ? value.toLocaleString() : value < 10 ? value.toFixed(4) : value.toFixed(2)}
             />
             <YAxis
               yAxisId="volume"
@@ -867,7 +868,7 @@ const TradingChart = ({ onFibonacciUpdate }) => {
         ) : chartType === 'line' ? (
           <LineChart
             data={data}
-            margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+            margin={{ top: 20, right: 30, left: 30, bottom: 20 }}
           >
             <defs>
               <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
@@ -885,6 +886,8 @@ const TradingChart = ({ onFibonacciUpdate }) => {
               stroke="#999"
               tick={{ fill: '#999' }}
               domain={['auto', 'auto']}
+              width={90}
+              tickFormatter={(value) => value >= 1000 ? value.toLocaleString() : value < 10 ? value.toFixed(4) : value.toFixed(2)}
             />
             <Tooltip content={<CustomTooltip />} />
             <Legend wrapperStyle={{ color: '#999' }} />
@@ -918,7 +921,7 @@ const TradingChart = ({ onFibonacciUpdate }) => {
         ) : (
           <AreaChart
             data={data}
-            margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+            margin={{ top: 20, right: 30, left: 30, bottom: 20 }}
           >
             <defs>
               <linearGradient id="colorClose" x1="0" y1="0" x2="0" y2="1">
@@ -936,6 +939,8 @@ const TradingChart = ({ onFibonacciUpdate }) => {
               stroke="#999"
               tick={{ fill: '#999' }}
               domain={['auto', 'auto']}
+              width={90}
+              tickFormatter={(value) => value >= 1000 ? value.toLocaleString() : value < 10 ? value.toFixed(4) : value.toFixed(2)}
             />
             <Tooltip content={<CustomTooltip />} />
             <Legend wrapperStyle={{ color: '#999' }} />
